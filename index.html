@@ -106,7 +106,10 @@ function shuffle(arr) {
 // 페이지 로드시 카테고리 순서 랜덤
 categories = shuffle(categories);
 
-const hiddenCategories = new Map(); // key: 카테고리, value: timestamp
+/* 2) 숨김 상태: 2분 타이머 포함 */
+const HIDE_MS = 120000; // 2분
+// Map<cat, { hiddenAt:number, timer:number }>
+const hiddenCategories = new Map();
 
 const container = document.getElementById('container');
 const loading = document.getElementById('loading');
@@ -131,44 +134,64 @@ function parseCSV(text) {
 }
 
 /* ----------------- 카테고리 숨김 ----------------- */
+function isCategoryHidden(cat) {
+  if (!hiddenCategories.has(cat)) return false;
+  const { hiddenAt } = hiddenCategories.get(cat);
+  // 타이머 기반으로 자동 복구되므로 여기선 true/false만 반환
+  return (Date.now() - hiddenAt) < HIDE_MS;
+}
+
 function hideCategory(cat) {
   if (!cat || !container) return;
-  hiddenCategories.set(cat, Date.now());
+
+  // 기존 타이머가 있으면 제거(재설정)
+  if (hiddenCategories.has(cat)) {
+    const prev = hiddenCategories.get(cat);
+    if (prev?.timer) clearTimeout(prev.timer);
+  }
+
+  // 즉시 DOM에서 해당 카테고리 영상 제거
   [...container.querySelectorAll(`.video[data-category="${cat}"]`)].forEach(el => {
     const vid = el.querySelector('video');
     if (vid) { vid.pause(); vid.src = ''; }
     el.remove();
   });
+
+  // 상태 저장 및 2분 뒤 자동 복구 + 화면 갱신
+  const timer = setTimeout(() => {
+    hiddenCategories.delete(cat);
+    reloadVideos();       // 자동으로 다시 보이도록 재렌더
+  }, HIDE_MS);
+
+  hiddenCategories.set(cat, { hiddenAt: Date.now(), timer });
+
+  // 다른 카테고리가 남아 있다면 화면 갱신
   updateVideosAfterHide();
 }
-function isCategoryHidden(cat) {
-  if (!hiddenCategories.has(cat)) return false;
-  const hiddenAt = hiddenCategories.get(cat);
-  if (Date.now() - hiddenAt > 120000) { // 2분 후 복구
-    hiddenCategories.delete(cat);
-    return false;
-  }
-  return true;
-}
+
 function restoreOldestCategory() {
+  // (안 쓰일 가능성 높지만, 모든 카테고리를 숨겼을 때 대비)
   let oldest = null, oldestTime = Infinity;
-  for (let [cat, time] of hiddenCategories) {
-    if (time < oldestTime) { oldest = cat; oldestTime = time; }
+  for (let [cat, info] of hiddenCategories) {
+    if (info.hiddenAt < oldestTime) { oldest = cat; oldestTime = info.hiddenAt; }
   }
-  if (oldest) hiddenCategories.delete(oldest);
+  if (oldest) {
+    const info = hiddenCategories.get(oldest);
+    if (info?.timer) clearTimeout(info.timer);
+    hiddenCategories.delete(oldest);
+  }
   return oldest;
 }
+
 function updateVideosAfterHide() {
   const visibleCats = categories.filter(c => !isCategoryHidden(c));
   if (visibleCats.length === 0) {
     const restored = restoreOldestCategory();
     if (restored) {
       console.log(`모든 카테고리가 숨겨져서 ${restored} 카테고리를 복구합니다.`);
-      reloadVideos();
     }
-  } else {
-    reloadVideos();
   }
+  reloadVideos();
 }
 
 /* ----------------- 포스트 생성 ----------------- */
@@ -213,8 +236,8 @@ async function loadAll() {
         const res = await fetch(`${cat}.csv`);
         if (!res.ok) throw new Error(`${cat}.csv 로드 실패`);
         const text = await res.text();
-        // 카테고리 내부도 랜덤
         const rows = parseCSV(text).map(r => ({ ...r, _category: cat }));
+        // 카테고리 내부 랜덤
         return shuffle(rows);
       } catch (err) {
         console.error(err);
@@ -222,7 +245,7 @@ async function loadAll() {
       }
     }));
 
-    // 최종 전체도 랜덤(카테고리 섞임 + 각 카테고리 내부 섞임 + 전체 섞임)
+    // 전체도 랜덤
     allVideosCache = shuffle(results.flat());
 
     reloadVideos();
@@ -245,8 +268,7 @@ function reloadVideos() {
     .forEach(row => container.appendChild(createPost(row)));
 
   observeVideos();
-  // 리로드 직후 오디오 정책 적용(초기엔 전부 mute)
-  applyAudioPolicy();
+  applyAudioPolicy(); // 리로드 직후 음향 규칙 유지
 }
 
 /* ----------------- 오디오 정책 ----------------- */
@@ -345,5 +367,6 @@ loadAll();
 </script>
 </body>
 </html>
+
 
 
