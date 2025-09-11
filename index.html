@@ -1,3 +1,4 @@
+<!-- index-2min-centered.html — 2-minute hide window + bottom sheet + 5s toast; videos centered -->
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -90,6 +91,23 @@
     @media (min-width: 540px){
       .sheet { margin: 0 auto; max-width: 520px; border-top-left-radius: 18px; border-top-right-radius: 18px; }
     }
+
+    /* ===== (추가) CSV 버튼 — 고정 오버레이(기존 레이아웃 영향 없음) ===== */
+    .csv-export-btn {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      z-index: 10000;
+      background: rgba(17,17,17,0.9);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 13px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .csv-export-btn:active { transform: translateY(1px); }
   </style>
 </head>
 <body>
@@ -149,6 +167,9 @@
     <button id="sheet-cancel" class="sheet-close" aria-label="닫기">닫기</button>
   </div>
 </div>
+
+<!-- (추가) CSV 내보내기 버튼 — 고정 오버레이 -->
+<button id="btn-export" class="csv-export-btn" type="button" aria-label="CSV 내보내기">CSV</button>
 
 <script>
 /* ----------------- 공통 유틸 ----------------- */
@@ -475,17 +496,17 @@ function exportNILogsToCSV(){
   a.href = url; a.download = `not_interested_logs_${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}.csv`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 }
-// 콘솔에서 사용: exportNI.get(), exportNI.exportCSV()
-window.exportNI = { get: getNILogs, exportCSV: exportNILogsToCSV };
+// (추가) CSV 버튼 클릭 연결
+document.getElementById('btn-export')?.addEventListener('click', exportNILogsToCSV);
 
-/* ===================== 기존 바텀시트 사유 클릭에 "한 줄" 추가 ===================== */
+/* ===================== 바텀시트 사유 클릭: 로깅만 추가 ===================== */
 if(sheetList) sheetList.addEventListener('click', (e)=>{
   const btn = e.target.closest('.sheet-item');
   if(!btn) return;
-  const reason = btn.dataset.reason; // 필요 시 로깅/전송
+  const reason = btn.dataset.reason; // 기존
   const cat = pendingCategory;
 
-  /* >>> 추가: 현재 활성 카드 메타를 뽑아 로깅 */
+  // (추가) 현재 활성 카드 메타 → 로그에 저장
   const activeVideo = getActiveVideo();
   const card = activeVideo ? activeVideo.closest('.video') : null;
   const row = card ? {
@@ -495,8 +516,8 @@ if(sheetList) sheetList.addEventListener('click', (e)=>{
     'MP4 URL': activeVideo?.currentSrc || activeVideo?.src || ''
   } : null;
   try { logNotInterested({ reason, category: cat, row }); } catch(e){ console.warn('NI 로그 실패', e); }
-  /* <<< 추가 끝 */
 
+  // 원래 흐름 유지
   closeBottomSheet();
   if(cat){
     hideCategory(cat); // 기존 2분 숨김 로직 실행
