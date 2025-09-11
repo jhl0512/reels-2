@@ -1,367 +1,473 @@
-<!-- index.html (전체 코드) -->
+<!-- index-2min-centered.html — 2-minute hide window + bottom sheet + 5s toast; videos centered -->
 <!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=0.9, viewport-fit=cover" />
-<title>Shorts Demo with 관심없음 로그</title>
-<style>
-  :root { --maxw: 500px; }
-  html, body { margin:0; padding:0; height:100vh; overflow:hidden; background:#000; color:#fff; font-family:system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, Apple SD Gothic Neo, Arial, sans-serif; }
-  body { padding-top: env(safe-area-inset-top); }
+<link href="youtube_sample_globals.css" rel="stylesheet"/>
+<link href="yotuube_sample.css" rel="stylesheet"/>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100vh;
+      overflow: hidden;
+      background: #000;
+    }
 
-  #topbar {
-    position: fixed; top:0; left:0; right:0; height:48px; display:flex; align-items:center; justify-content:space-between;
-    padding:0 12px; background:rgba(0,0,0,0.5); backdrop-filter: blur(6px); z-index:20;
-  }
-  #topbar .title { font-weight:700; font-size:14px; opacity:.9; }
-  #topbar .actions { display:flex; gap:8px; }
-  .btn {
-    border:1px solid rgba(255,255,255,.2); background:rgba(255,255,255,.08); color:#fff; padding:6px 10px; border-radius:10px; font-size:12px; cursor:pointer;
-  }
-  .btn:active { transform: translateY(1px); }
+    /* Container – scroll snaps vertically; content centered */
+    #container {
+      height: calc(var(--vh, 1vh) * 100);
+      overflow-y: scroll;
+      scroll-snap-type: y mandatory;
+      -webkit-overflow-scrolling: touch;
+      padding-top: env(safe-area-inset-top, 0);
+    }
+    #container::-webkit-scrollbar { display: none; }
 
-  #container {
-    position:relative;
-    height: calc(var(--vh, 1vh) * 100);
-    overflow-y: scroll;
-    scroll-snap-type: y mandatory;
-    -webkit-overflow-scrolling: touch;
-  }
-  #container::-webkit-scrollbar { display:none; }
+    /* Video card – fixed height; centered horizontally (no UI structure change) */
+    .video {
+      position: relative;
+      scroll-snap-align: end;
+      height: 100vh;
+      max-width: 500px;
+      overflow: hidden;
+      margin: 0 auto; /* <<< center the card horizontally */
+    }
+    .video video.video-bg {
+      position: absolute;
+      top: 0; left: 0;
+      height: 100vh; width: 100%;
+      object-fit: cover;
+      z-index: 0; pointer-events: none;
+    }
+    .video > * { position: relative; z-index: 1; }
 
-  .spacer { height:48px; } /* for topbar */
+    #loading {
+      text-align: center;
+      padding: 8px;
+      background: #fff;
+      color: #333;
+      font-size: 0.9rem;
+      max-width: 500px;
+      margin: 0 auto; /* loading bar centered too */
+    }
 
-  .video {
-    position: relative;
-    scroll-snap-align: end;
-    height: calc(100vh - 0px);
-    max-width: var(--maxw);
-    margin: 0 auto;
-    overflow: hidden;
-    border-left: 1px solid rgba(255,255,255,.06);
-    border-right: 1px solid rgba(255,255,255,.06);
-  }
-  .video video.video-bg,
-  .video .fake-video {
-    position:absolute; inset:0; width:100%; height:100%; object-fit:cover; background:#111;
-  }
-  .video .overlay {
-    position:absolute; left:0; right:0; bottom:0; padding:16px;
-    background: linear-gradient(180deg, rgba(0,0,0,0) 0% , rgba(0,0,0,0.65) 80%);
-  }
-  .meta { display:flex; flex-direction:column; gap:6px; margin-bottom:10px; }
-  .title-text { font-size:16px; font-weight:700; line-height:1.35; }
-  .sub-text { font-size:12px; opacity:.75; }
+    /* ===== Toast (5s) ===== */
+    .toast {
+      position: fixed; top: env(safe-area-inset-top, 0); left: 50%;
+      transform: translateX(-50%) translateY(-20px);
+      background: rgba(20,20,20,0.92); color: #fff;
+      padding: 10px 14px; border-radius: 12px; font-size: 14px;
+      box-shadow: 0 6px 20px rgba(0,0,0,.35);
+      opacity: 0; z-index: 9999; pointer-events: none;
+      transition: opacity .18s ease, transform .18s ease;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(8px); }
 
-  .toolbar {
-    position:absolute; right:8px; bottom:90px; display:flex; flex-direction:column; gap:10px;
-  }
-  .tbtn { width:42px; height:42px; border-radius:50%; background:rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.18); display:grid; place-items:center; cursor:pointer; font-size:11px; text-align:center; line-height:1.1; padding:4px; }
-  .tbtn:active { transform:translateY(1px); }
-  .tbtn small { opacity:.8; display:block; margin-top:2px; font-size:10px; }
+    /* ===== Bottom Sheet ===== */
+    .sheet-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+      opacity: 0; pointer-events: none; transition: opacity .2s ease;
+      z-index: 9997;
+    }
+    .sheet-backdrop.open { opacity: 1; pointer-events: auto; }
 
-  /* Bottom Sheet */
-  .sheet-backdrop {
-    position:fixed; inset:0; background:rgba(0,0,0,.4); opacity:0; pointer-events:none; transition:opacity .2s ease; z-index:30;
-  }
-  .sheet {
-    position:fixed; left:50%; transform:translateX(-50%); right:0; bottom:-70vh; width:100%; max-width:var(--maxw);
-    background:#111; border-top-left-radius:16px; border-top-right-radius:16px; box-shadow:0 -8px 30px rgba(0,0,0,.5);
-    transition: bottom .25s ease; z-index:31;
-  }
-  .sheet-header { padding:14px 16px 8px; border-bottom:1px solid rgba(255,255,255,.06); }
-  .sheet-title { font-weight:700; font-size:14px; }
-  .sheet-list { display:grid; grid-template-columns:1fr; gap:8px; padding:12px 16px 16px; max-height:50vh; overflow:auto; }
-  .sheet-item {
-    border:1px solid rgba(255,255,255,.16); background:#171717; padding:10px 12px; border-radius:12px; font-size:13px; cursor:pointer;
-  }
-  .sheet-item:active { transform: translateY(1px); background:#1e1e1e; }
-
-  .sheet-open .sheet-backdrop { opacity:1; pointer-events:auto; }
-  .sheet-open .sheet { bottom:0; }
-
-  /* Toast */
-  .toast {
-    position:fixed; left:50%; transform:translateX(-50%); bottom:18px; background:rgba(20,20,20,.9); border:1px solid rgba(255,255,255,.15);
-    color:#fff; padding:10px 12px; border-radius:10px; font-size:12px; z-index:40; opacity:0; pointer-events:none; transition:opacity .2s ease;
-  }
-  .toast.show { opacity:1; }
-
-  /* Hidden helper */
-  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
-
-  /* Empty state (필요시) */
-  .empty { display:none; height:calc(100vh - 48px); align-items:center; justify-content:center; flex-direction:column; gap:10px; color:#bbb; }
-  .empty.show { display:flex; }
-</style>
+    .sheet {
+      position: fixed; left: 0; right: 0; bottom: -70vh; 
+      background: #111; color: #fff;
+      border-top-left-radius: 14px; border-top-right-radius: 14px;
+      box-shadow: 0 -12px 30px rgba(0,0,0,0.5);
+      transition: bottom .25s ease;
+      z-index: 9998;
+      padding: 14px 16px;
+      max-height: 70vh; overflow: auto;
+    }
+    .sheet.open { bottom: 0; }
+    .sheet-title { font-weight: 700; margin-bottom: 10px; }
+    .sheet-list { display: grid; grid-template-columns: 1fr; gap: 8px; }
+    .sheet-item {
+      border: 1px solid rgba(255,255,255,0.15); border-radius: 12px;
+      background: rgba(255,255,255,0.08); color: #fff; padding: 12px 14px; font-size: 15px;
+      display: flex; justify-content: space-between; align-items: center; cursor: pointer;
+    }
+    .sheet-item:active { transform: translateY(1px); }
+    .sheet-footer { margin-top: 10px; display: flex; justify-content: flex-end; gap: 8px; }
+    .sheet-close {
+      background: rgba(255,255,255,0.15); color:#fff; border:0; border-radius:10px; padding:10px 12px; cursor:pointer;
+    }
+    @media (min-width: 540px){
+      .sheet { margin: 0 auto; max-width: 520px; border-top-left-radius: 18px; border-top-right-radius: 18px; }
+    }
+  </style>
 </head>
 <body>
-
-  <div id="topbar">
-    <div class="title">Demo · 관심없음 + 타임스탬프 로그</div>
-    <div class="actions">
-      <button class="btn" id="btnExport">CSV 내보내기</button>
-      <button class="btn" id="btnClear">로그 비우기</button>
+<div id="container">
+  <!-- 템플릿 -->
+  <div class="video" id="video-template">
+    <div class="top">
+      <!-- search icon -->
+      <svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" viewBox="0 0 25 25" fill="none"><path d="..."/></svg>
+      <!-- more-vertical icon -->
+      <svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" viewBox="0 0 25 25" fill="none"><path d="..."/></svg>
+    </div>
+    <div class="body">
+      <div class="left">
+        <div class="id">
+          <div class="ellipse"></div>
+          <div class="id-text"></div>
+        </div>
+        <p class="title-text"></p>
+        <div class="music">
+          <!-- music note icon -->
+          <svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 19 19" fill="none"><path d="..."/></svg>
+          <div class="music-text"></div>
+          <div class="rectangle-1"></div>
+        </div>
+      </div>
+      <div class="right">
+        <button class="button"><svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" fill="none"><path d="..."/></svg><div class="text-wrapper">LIKE</div></button>
+        <button class="button"><svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" fill="none"><path d="..."/></svg><div class="text-wrapper">싫어요</div></button>
+        <button class="button btn-comment"><svg xmlns="http://www.w3.org/2000/svg" width="25" height="25" fill="none"><path d="..."/></svg><div class="text-wrapper">999</div></button>
+        <button class="button btn-hide-category"><svg width="25" height="25" viewBox="0 0 25 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="..." fill="white"/></svg><div class="text-wrapper">관심없음</div></button>
+        <div class="rectangle"></div>
+      </div>
     </div>
   </div>
+  <div id="loading">로딩 중...</div>
+</div>
 
-  <div id="container" tabindex="0" aria-label="동영상 목록">
-    <div class="spacer" aria-hidden="true"></div>
-    <!-- 동영상 카드들이 JS로 렌더링됩니다 -->
-    <div id="list"></div>
-    <div class="empty" id="emptyState">
-      <div>표시할 동영상이 없습니다.</div>
-      <button class="btn" id="resetHidden">숨김 해제</button>
-    </div>
+<!-- Toast -->
+<div id="toast" class="toast" role="status" aria-live="polite">비슷한 동영상이 더 적게 표시됩니다.</div>
+
+<!-- Bottom Sheet -->
+<div id="sheet-backdrop" class="sheet-backdrop" tabindex="-1" aria-hidden="true"></div>
+<div id="bottom-sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" aria-hidden="true">
+  <div class="sheet-title" id="sheet-title">관심이 없는 이유를 알려주세요</div>
+  <div class="sheet-list" id="sheet-list">
+    <button class="sheet-item" data-reason="관련성이 없음">관련성이 없음</button>
+    <button class="sheet-item" data-reason="지루함">지루함</button>
+    <button class="sheet-item" data-reason="너무 성적임">너무 성적임</button>
+    <button class="sheet-item" data-reason="혐오감을 줌">혐오감을 줌</button>
+    <button class="sheet-item" data-reason="폭력적인">폭력적인</button>
+    <button class="sheet-item" data-reason="불쾌감을 줌">불쾌감을 줌</button>
+    <button class="sheet-item" data-reason="혼동을 야기함">혼동을 야기함</button>
+    <button class="sheet-item" data-reason="기타">기타</button>
   </div>
-
-  <!-- Bottom Sheet -->
-  <div class="sheet-backdrop" id="sheetBackdrop" aria-hidden="true"></div>
-  <div class="sheet" id="bottomSheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
-    <div class="sheet-header">
-      <div class="sheet-title" id="sheetTitle">왜 관심없음을 선택했나요?</div>
-    </div>
-    <div class="sheet-list" id="sheetList" role="listbox" aria-label="관심없음 사유 선택">
-      <!-- 사유 버튼들 JS로 채움 -->
-    </div>
+  <div class="sheet-footer">
+    <button id="sheet-cancel" class="sheet-close" aria-label="닫기">닫기</button>
   </div>
-
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</div>
 
 <script>
-/* =========================
-    0) 기본 뷰포트 보정
-========================= */
-function setVhUnit() {
+/* ----------------- 공통 유틸 ----------------- */
+function setVhUnit(){
   const vh = window.innerHeight * 0.01;
   document.documentElement.style.setProperty('--vh', `${vh}px`);
 }
 setVhUnit();
 window.addEventListener('resize', setVhUnit);
 
-/* =========================
-    1) 데모 데이터
-    - 실제 깃허브 환경에서는 CSV 로드 후
-      allVideosCache = parsedRows 형태로 두면 동작합니다.
-========================= */
-const categories = ['hindi.csv','ive.csv','kdh.csv','overwatch.csv','promise9.csv','sahoor.csv','thai.csv','valorant.csv'];
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
-// 샘플 데이터(구조 예시: CSV 파싱 결과와 비슷하게)
-let allVideosCache = [
-  { TITLE:'샘플 1', ID:'vid001', MUSIC:'track A', 'MP4 URL':'', _category:'kdh.csv' },
-  { TITLE:'샘플 2', ID:'vid002', MUSIC:'track B', 'MP4 URL':'', _category:'valorant.csv' },
-  { TITLE:'샘플 3', ID:'vid003', MUSIC:'track C', 'MP4 URL':'', _category:'ive.csv' },
-  { TITLE:'샘플 4', ID:'vid004', MUSIC:'track D', 'MP4 URL':'', _category:'kdh.csv' },
-  { TITLE:'샘플 5', ID:'vid005', MUSIC:'track E', 'MP4 URL':'', _category:'overwatch.csv' },
+/* ----------------- 데이터 로드 ----------------- */
+const categories = [
+  'hindi.csv','ive.csv','kdh.csv','overwatch.csv',
+  'promise9.csv','sahoor.csv','thai.csv','valorant.csv'
 ];
-
-/* =========================
-    2) 숨김 상태(카테고리)
-========================= */
-const HIDE_KEY = 'hidden_categories_v1';
-function getHiddenCats() {
-  try { return JSON.parse(localStorage.getItem(HIDE_KEY) || '[]'); } catch { return []; }
-}
-function setHiddenCats(arr) {
-  localStorage.setItem(HIDE_KEY, JSON.stringify(arr ?? []));
-}
-function isHidden(cat) { return getHiddenCats().includes(cat); }
-function hideCategory(cat) {
-  const set = new Set(getHiddenCats());
-  set.add(cat);
-  setHiddenCats([...set]);
-  renderList();
-}
-function resetHidden() {
-  setHiddenCats([]);
-  renderList();
-}
-
-/* =========================
-    3) 렌더링
-========================= */
-const listEl = document.getElementById('list');
-const emptyEl = document.getElementById('emptyState');
-
-function renderList() {
-  listEl.innerHTML = '';
-  const hidden = getHiddenCats();
-  const data = allVideosCache.filter(r => !hidden.includes(r._category));
-  if (!data.length) {
-    emptyEl.classList.add('show');
-  } else {
-    emptyEl.classList.remove('show');
-  }
-  for (const row of data) {
-    const card = document.createElement('section');
-    card.className = 'video';
-    card.dataset.category = row._category;
-    card.dataset.id = row.ID;
-
-    // 비디오가 없는 환경을 위해 가짜 박스
-    const fake = document.createElement('div');
-    fake.className = 'fake-video';
-    fake.style.background = 'linear-gradient(180deg,#333,#111)';
-    fake.innerHTML = `<div class="sr">비디오</div>`;
-    card.appendChild(fake);
-
-    const overlay = document.createElement('div');
-    overlay.className = 'overlay';
-    overlay.innerHTML = `
-      <div class="meta">
-        <div class="title-text">${escapeHtml(row.TITLE || '')}</div>
-        <div class="sub-text">카테고리: ${escapeHtml(row._category)} · ID: ${escapeHtml(row.ID||'')}</div>
-        <div class="sub-text">음악: ${escapeHtml(row.MUSIC||'')}</div>
-      </div>
-    `;
-    card.appendChild(overlay);
-
-    const tools = document.createElement('div');
-    tools.className = 'toolbar';
-
-    const btnNI = document.createElement('button');
-    btnNI.className = 'tbtn';
-    btnNI.innerHTML = `관심<br/>없음`;
-    btnNI.addEventListener('click', ()=>{
-      openBottomSheet(row._category);
-    });
-    tools.appendChild(btnNI);
-
-    const btnMute = document.createElement('button');
-    btnMute.className = 'tbtn';
-    btnMute.innerHTML = `뮤트<small>토글</small>`;
-    btnMute.addEventListener('click', ()=>{
-      showToast('데모: 뮤트 토글');
-    });
-    tools.appendChild(btnMute);
-
-    card.appendChild(tools);
-    listEl.appendChild(card);
+let allVideosCache = [];
+async function loadAll(){
+  try {
+    const results = await Promise.all(categories.map(async cat=>{
+      try {
+        const res = await fetch(`${cat}.csv`);
+        if (!res.ok) throw new Error('fail');
+        const txt = await res.text();
+        const rows = parseCSV(txt).map(r => ({...r, _category: cat}));
+        return rows;
+      } catch(e){
+        return [];
+      }
+    }));
+    allVideosCache = results.flat();
+    renderAll(allVideosCache);
+  } catch(e){
+    console.warn('loadAll error', e);
   }
 }
 
-/* =========================
-    4) 활성 비디오 탐색
-========================= */
-function getActiveVideo() {
-  // 뷰포트 중앙에 가장 가까운 카드를 active 로 간주
-  const cards = [...document.querySelectorAll('.video')];
-  if (!cards.length) return null;
-  const center = window.innerHeight / 2;
-  let best = null, bestDist = Infinity;
-  for (const el of cards) {
-    const rect = el.getBoundingClientRect();
-    const mid = rect.top + rect.height/2;
-    const dist = Math.abs(mid - center);
-    if (dist < bestDist) { bestDist = dist; best = el; }
-  }
-  return best;
-}
-
-/* =========================
-    5) Bottom Sheet (관심없음 사유)
-========================= */
-const reasons = [
-  '이 동영상에 관심 없음',
-  '이 채널에 관심 없음',
-  '이 카테고리 숨기기',
-  '중복/이미 봄',
-  '부적절/불편함',
-  '낚시성/과장',
-  '반복 노출됨',
-  '기타'
-];
-
-let pendingCategory = null;
-const sheet = document.getElementById('bottomSheet');
-const sheetBackdrop = document.getElementById('sheetBackdrop');
-const sheetList = document.getElementById('sheetList');
-
-function fillReasons() {
-  sheetList.innerHTML = '';
-  reasons.forEach(r => {
-    const b = document.createElement('button');
-    b.className = 'sheet-item';
-    b.setAttribute('role','option');
-    b.dataset.reason = r;
-    b.textContent = r;
-    sheetList.appendChild(b);
+/* CSV 파서 (간단) */
+function parseCSV(text){
+  const lines = text.split(/\r?\n/).filter(Boolean);
+  if (lines.length === 0) return [];
+  const headers = lines[0].split(',');
+  return lines.slice(1).map(line=>{
+    const cols = splitCSVLine(line);
+    const row = {};
+    headers.forEach((h,i)=> row[h.trim()] = (cols[i]||'').trim());
+    return row;
   });
 }
-
-function openBottomSheet(category) {
-  pendingCategory = category || null;
-  document.body.classList.add('sheet-open');
-  sheetBackdrop.setAttribute('aria-hidden', 'false');
-}
-function closeBottomSheet() {
-  pendingCategory = null;
-  document.body.classList.remove('sheet-open');
-  sheetBackdrop.setAttribute('aria-hidden', 'true');
-}
-
-sheetBackdrop.addEventListener('click', closeBottomSheet);
-
-if (sheetList) sheetList.addEventListener('click', (e)=>{
-  const btn = e.target.closest('.sheet-item');
-  if(!btn) return;
-  const reason = btn.dataset.reason;
-  const cat = pendingCategory;
-
-  // 현재 활성 카드 & 해당 데이터 추정
-  const activeVideo = getActiveVideo();
-  const activeCard  = activeVideo ? activeVideo.closest('.video') : null;
-  const row = activeCard
-    ? allVideosCache.find(r =>
-        r._category === (activeCard.dataset.category || '') &&
-        (r.TITLE || '') === (activeCard.querySelector('.title-text')?.textContent || '')
-      ) || null
-    : null;
-
-  // 로그 적재
-  logNotInterested({ reason, category: cat, row });
-
-  closeBottomSheet();
-
-  // 예: "이 카테고리 숨기기" 선택 시 해당 카테고리를 숨김
-  if (cat && reason === '이 카테고리 숨기기') {
-    hideCategory(cat);
-    showToast('해당 카테고리가 숨겨졌습니다.');
-  } else {
-    showToast('피드백을 반영했어요.');
+// 따옴표 고려 분리
+function splitCSVLine(line){
+  const out = []; let cur = ''; let inQ = false;
+  for (let i=0;i<line.length;i++){
+    const c = line[i];
+    if (c === '"'){
+      if (inQ && line[i+1] === '"'){ cur += '"'; i++; }
+      else inQ = !inQ;
+    } else if (c === ',' && !inQ){
+      out.push(cur); cur = '';
+    } else cur += c;
   }
-});
+  out.push(cur);
+  return out;
+}
 
-/* =========================
-    6) Toast
-========================= */
-const toastEl = document.getElementById('toast');
+/* ----------------- 렌더 ----------------- */
+const container = document.getElementById('container');
+const template = document.getElementById('video-template');
+const loading = document.getElementById('loading');
+
+function renderAll(rows){
+  loading.textContent = '로딩 중...';
+  // 기존 리스트 제거
+  container.querySelectorAll('.video:not(#video-template)').forEach(el=>el.remove());
+
+  // 카드 생성
+  rows.forEach(row=>{
+    const el = createPost(row);
+    if (el) container.insertBefore(el, loading);
+  });
+
+  // IO 세팅
+  setupIntersectionObserver();
+
+  // 첫 카드로 스크롤 스냅
+  container.scrollTo({ top: 0, behavior: 'auto' });
+  setTimeout(()=> applyAudioPolicy(), 50);
+
+  loading.textContent = '더 이상 항목이 없습니다.';
+}
+
+function createPost(data){
+  const cat = data._category || '';
+  if(isCategoryHidden(cat)) return null;
+
+  const post = template.cloneNode(true);
+  post.dataset.category = cat;
+
+  // 비디오
+  const bg = document.createElement('video');
+  bg.className = 'video-bg';
+  bg.setAttribute('data-src', data['MP4 URL']);
+  bg.autoplay = true;
+  bg.loop = true;
+  bg.playsInline = true;
+  bg.muted = true;          // 초기엔 항상 mute
+  bg.preload = "none";
+  post.prepend(bg);
+
+  // 텍스트 바인딩
+  const idText = post.querySelector('.id-text');
+  const titleText = post.querySelector('.title-text');
+  const musicText = post.querySelector('.music-text');
+  if(idText) idText.textContent = data['ID'] || '';
+  if(titleText) titleText.textContent = data['TITLE'] || '';
+  if(musicText) musicText.textContent = data['MUSIC'] || '';
+
+  // 관심없음
+  const hideBtn = post.querySelector('.btn-hide-category');
+  if (hideBtn) {
+    hideBtn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      openBottomSheet(cat);
+    });
+  }
+
+  // 댓글 버튼(데모)
+  const commentBtn = post.querySelector('.btn-comment');
+  if (commentBtn){
+    commentBtn.addEventListener('click', ()=>{
+      showToast('댓글 기능은 데모입니다.');
+    });
+  }
+
+  post.removeAttribute('id'); // 템플릿과 충돌 방지
+  return post;
+}
+
+/* ----------------- 카테고리 숨김 (2분 후 복귀) ----------------- */
+const HIDDEN_KEY = 'hidden_categories';
+function getHiddenMap(){
+  try { return JSON.parse(localStorage.getItem(HIDDEN_KEY) || '{}'); }
+  catch { return {}; }
+}
+function setHiddenMap(obj){
+  localStorage.setItem(HIDDEN_KEY, JSON.stringify(obj));
+}
+function isCategoryHidden(cat){
+  const map = getHiddenMap();
+  const until = map[cat];
+  if (!until) return false;
+  const now = Date.now();
+  if (now >= until){
+    // 만료
+    delete map[cat]; setHiddenMap(map);
+    return false;
+  }
+  return true;
+}
+function hideCategory(cat){
+  const map = getHiddenMap();
+  const ttl = 2 * 60 * 1000; // 2분
+  map[cat] = Date.now() + ttl;
+  setHiddenMap(map);
+  // 즉시 화면에서 제거
+  renderAll(allVideosCache);
+}
+
+/* ----------------- 오디오 정책 ----------------- */
+let userGestureGranted = false;
+container.addEventListener('click', ()=>{ userGestureGranted = true; applyAudioPolicy(); }, { once:true });
+
+function getActiveVideo() {
+  return document.querySelector('.video video.video-bg[data-active="true"]');
+}
+
+// 한 번에 하나만 소리
+function applyAudioPolicy() {
+  const videos = document.querySelectorAll('.video video.video-bg');
+  const active = getActiveVideo();
+
+  videos.forEach(v => { v.muted = true; });
+
+  if (userGestureGranted && active) {
+    active.muted = false;
+    if (active.paused) active.play().catch(()=>{});
+  }
+}
+
+/* ----------------- IntersectionObserver ----------------- */
+let observer;
+function setupIntersectionObserver(){
+  if (observer) observer.disconnect();
+  observer = new IntersectionObserver(entries=>{
+    entries.forEach(entry=>{
+      const video = entry.target;
+      if (entry.isIntersecting && entry.intersectionRatio >= 0.75){
+        // lazy load src
+        if (!video.src) {
+          const src = video.getAttribute('data-src');
+          if (src) video.src = src;
+        }
+        video.setAttribute('data-active', 'true');
+
+        // 재생
+        video.play().catch(()=>{});
+
+        // 다른 비디오는 비활성
+        document.querySelectorAll('.video video.video-bg[data-active="true"]').forEach(v=>{
+          if(v !== video) v.removeAttribute('data-active');
+        });
+
+        video.play().catch(()=>{});
+      } else {
+        video.removeAttribute('data-active');
+        video.pause();
+      }
+    });
+
+    // 교차 변경 후 오디오 정책 반영
+    applyAudioPolicy();
+  }, { threshold: 0.75 });
+
+  document.querySelectorAll('.video video.video-bg').forEach(v=>observer.observe(v));
+}
+
+/* ----------------- 스크롤 스냅(한 장씩) ----------------- */
+let isScrolling = false;
+container.addEventListener('wheel', (e)=>{
+  e.preventDefault();
+  if (isScrolling) return;
+  isScrolling = true;
+
+  const direction = e.deltaY > 0 ? 1 : -1;
+  const cards = [...container.querySelectorAll('.video')];
+  const currentScroll = container.scrollTop;
+  const viewHeight = container.clientHeight;
+
+  let currentIndex = cards.findIndex(card=>{
+    const rect = card.getBoundingClientRect();
+    return Math.abs(rect.top - 0) < viewHeight * 0.5;
+  });
+  if (currentIndex < 0) currentIndex = 0;
+
+  let nextIndex = currentIndex + direction;
+  nextIndex = Math.max(0, Math.min(cards.length - 1, nextIndex));
+
+  const target = cards[nextIndex];
+  const top = target.offsetTop;
+  container.scrollTo({ top, behavior: 'smooth' });
+
+  setTimeout(()=>{ isScrolling = false; }, 320);
+}, { passive: false });
+
+/* ----------------- Bottom Sheet ----------------- */
+const sheet = document.getElementById('bottom-sheet');
+const sheetBackdrop = document.getElementById('sheet-backdrop');
+const sheetCancel = document.getElementById('sheet-cancel');
+const sheetList = document.getElementById('sheet-list');
+const toast = document.getElementById('toast');
+
+let pendingCategory = null;
 let toastTimer = null;
-function showToast(msg, ms=2000) {
-  toastEl.textContent = msg;
-  toastEl.classList.add('show');
+
+function openBottomSheet(category){
+  pendingCategory = category;
+  if(sheet){ sheet.setAttribute('aria-hidden','false'); sheet.classList.add('open'); }
+  if(sheetBackdrop){ sheetBackdrop.setAttribute('aria-hidden','false'); sheetBackdrop.classList.add('open'); }
+}
+function closeBottomSheet(){
+  if(sheet){ sheet.setAttribute('aria-hidden','true'); sheet.classList.remove('open'); }
+  if(sheetBackdrop){ sheetBackdrop.setAttribute('aria-hidden','true'); sheetBackdrop.classList.remove('open'); }
+  pendingCategory = null;
+}
+function showToast(msg, ms=2000){
+  if(!toast) return;
+  toast.textContent = msg;
+  toast.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(()=> toastEl.classList.remove('show'), ms);
+  toastTimer = setTimeout(()=> toast.classList.remove('show'), ms);
 }
+if(sheetBackdrop) sheetBackdrop.addEventListener('click', closeBottomSheet);
+if(sheetCancel) sheetCancel.addEventListener('click', closeBottomSheet);
 
-/* =========================
-    7) 관심없음 로그 저장/내보내기
-========================= */
+ /* ----------------- 관심없음 로그 (localStorage + CSV) ----------------- */
 const LOG_STORAGE_KEY = 'not_interested_logs_v1';
+function getNILogs(){ try { return JSON.parse(localStorage.getItem(LOG_STORAGE_KEY) || '[]'); } catch { return []; } }
+function saveNILogs(logs){ localStorage.setItem(LOG_STORAGE_KEY, JSON.stringify(logs)); }
+function exportNILogsToCSV(){
+  const logs = getNILogs();
+  if(!logs.length){ alert('저장된 로그가 없습니다.'); return; }
+  const headers = ['ts_iso','ts_local','reason','category','title','id','music','video_url'];
+  const rows = logs.map(o => headers.map(h => (String(o[h] ?? '')).replaceAll('"','""')));
+  const csv = [headers.join(','), ...rows.map(r => `"${r.join('","')}"`)].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const d = new Date();
+  a.href = url; a.download = `not_interested_logs_${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+}
+// 콘솔 편의
+window.exportNI = { get: getNILogs, exportCSV: exportNILogsToCSV };
 
-function getNILogs() {
-  try { return JSON.parse(localStorage.getItem(LOG_STORAGE_KEY) || '[]'); }
-  catch { return []; }
-}
-function saveNILogs(logs) {
-  localStorage.setItem(LOG_STORAGE_KEY, JSON.stringify(logs));
-}
-function logNotInterested({ reason, category, row }) {
+function logNotInterested({ reason, category, row }){
   const now = new Date();
   const entry = {
-    ts_iso: now.toISOString(),        // 기계 읽기용
-    ts_local: now.toLocaleString(),   // 사용자 표시용
+    ts_iso: now.toISOString(),
+    ts_local: now.toLocaleString(),
     reason,
     category,
     title: row?.TITLE ?? '',
@@ -369,63 +475,37 @@ function logNotInterested({ reason, category, row }) {
     music: row?.MUSIC ?? '',
     video_url: row?.['MP4 URL'] ?? ''
   };
-  const logs = getNILogs();
-  logs.push(entry);
-  saveNILogs(logs);
+  const logs = getNILogs(); logs.push(entry); saveNILogs(logs);
   console.debug('[NI LOG]', entry);
 }
 
-function exportNILogsToCSV() {
-  const logs = getNILogs();
-  if (!logs.length) { showToast('저장된 로그가 없습니다.'); return; }
-  const headers = ['ts_iso','ts_local','reason','category','title','id','music','video_url'];
-  const rows = logs.map(o => headers.map(h => (String(o[h] ?? '')).replaceAll('"','""')));
-  const csv = [headers.join(','), ...rows.map(r => `"${r.join('","')}"`)].join('\n');
+/* 바텀시트 사유 클릭 */
+sheetList.addEventListener('click', (e)=>{
+  const btn = e.target.closest('.sheet-item');
+  if(!btn) return;
+  const reason = btn.dataset.reason; // 필요 시 로깅/전송
+  const cat = pendingCategory;
 
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  const d = new Date();
-  a.download = `not_interested_logs_${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
+  // 현재 활성 비디오에서 관련 row 추정
+  const activeVideo = getActiveVideo();
+  const activeCard = activeVideo ? activeVideo.closest('.video') : null;
+  const row = activeCard
+    ? (allVideosCache.find(r => r._category === (activeCard.dataset.category||'') &&
+        (r.TITLE||'') === (activeCard.querySelector('.title-text')?.textContent||'')) || null)
+    : null;
 
-// 전역 내보내기 (콘솔에서 사용 가능)
-window.exportNI = { get: getNILogs, exportCSV: exportNILogsToCSV };
+  // 로깅
+  try { logNotInterested({ reason, category: cat, row }); } catch (e) { console.warn('로그 실패', e); }
 
-/* =========================
-    8) 유틸
-========================= */
-function escapeHtml(s) {
-  return String(s ?? '')
-    .replaceAll('&','&amp;').replaceAll('<','&lt;')
-    .replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
-}
-
-/* =========================
-    9) 이벤트 바인딩
-========================= */
-document.getElementById('btnExport')?.addEventListener('click', exportNILogsToCSV);
-document.getElementById('btnClear')?.addEventListener('click', ()=>{
-  localStorage.removeItem(LOG_STORAGE_KEY);
-  showToast('로그를 비웠습니다.');
-});
-document.getElementById('resetHidden')?.addEventListener('click', ()=>{
-  resetHidden();
-  showToast('숨김이 해제되었습니다.');
+  closeBottomSheet();
+  if(cat){
+    hideCategory(cat); // 기존 2분 숨김 로직 실행
+    showToast('비슷한 동영상이 더 적게 표시됩니다.', 5000); // 5초 토스트
+  }
 });
 
-/* =========================
-    10) 초기화
-========================= */
-fillReasons();
-renderList();
-
+/* ----------------- 시작 ----------------- */
+loadAll();
 </script>
 </body>
 </html>
-
