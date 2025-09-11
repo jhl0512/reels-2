@@ -91,23 +91,6 @@
     @media (min-width: 540px){
       .sheet { margin: 0 auto; max-width: 520px; border-top-left-radius: 18px; border-top-right-radius: 18px; }
     }
-
-    /* ===== (추가) CSV 버튼 — 고정 오버레이(기존 레이아웃 영향 없음) ===== */
-    .csv-export-btn {
-      position: fixed;
-      bottom: 16px;
-      right: 16px;
-      z-index: 10000;
-      background: rgba(17,17,17,0.9);
-      color: #fff;
-      border: 1px solid rgba(255,255,255,0.15);
-      border-radius: 10px;
-      padding: 10px 12px;
-      font-size: 13px;
-      cursor: pointer;
-      user-select: none;
-    }
-    .csv-export-btn:active { transform: translateY(1px); }
   </style>
 </head>
 <body>
@@ -167,9 +150,6 @@
     <button id="sheet-cancel" class="sheet-close" aria-label="닫기">닫기</button>
   </div>
 </div>
-
-<!-- (추가) CSV 내보내기 버튼 — 고정 오버레이 -->
-<button id="btn-export" class="csv-export-btn" type="button" aria-label="CSV 내보내기">CSV</button>
 
 <script>
 /* ----------------- 공통 유틸 ----------------- */
@@ -463,61 +443,13 @@ function showToast(message, durationMs=5000){
 }
 if(sheetBackdrop) sheetBackdrop.addEventListener('click', closeBottomSheet);
 if(sheetCancel) sheetCancel.addEventListener('click', closeBottomSheet);
-
-/* ===================== (추가) 관심없음 로깅 + CSV ===================== */
-const LOG_STORAGE_KEY = 'not_interested_logs_v1';
-function getNILogs(){ try { return JSON.parse(localStorage.getItem(LOG_STORAGE_KEY) || '[]'); } catch { return []; } }
-function saveNILogs(logs){ localStorage.setItem(LOG_STORAGE_KEY, JSON.stringify(logs)); }
-function logNotInterested({ reason, category, row }){
-  const now = new Date();
-  const entry = {
-    ts_iso  : now.toISOString(),
-    ts_local: now.toLocaleString(),
-    reason,
-    category: category ?? '',
-    title   : row?.TITLE ?? '',
-    id      : row?.ID ?? '',
-    music   : row?.MUSIC ?? '',
-    video_url: row?.['MP4 URL'] ?? ''
-  };
-  const logs = getNILogs(); logs.push(entry); saveNILogs(logs);
-  console.debug('[NI LOG]', entry);
-}
-function exportNILogsToCSV(){
-  const logs = getNILogs();
-  if(!logs.length){ alert('저장된 로그가 없습니다.'); return; }
-  const headers = ['ts_iso','ts_local','reason','category','title','id','music','video_url'];
-  const rows = logs.map(o => headers.map(h => (String(o[h] ?? '')).replaceAll('"','""')));
-  const csv = [headers.join(','), ...rows.map(r => `"${r.join('","')}"`)].join('\n');
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  const d = new Date();
-  a.href = url; a.download = `not_interested_logs_${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}.csv`;
-  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-}
-// (추가) CSV 버튼 클릭 연결
-document.getElementById('btn-export')?.addEventListener('click', exportNILogsToCSV);
-
-/* ===================== 바텀시트 사유 클릭: 로깅만 추가 ===================== */
 if(sheetList) sheetList.addEventListener('click', (e)=>{
   const btn = e.target.closest('.sheet-item');
   if(!btn) return;
-  const reason = btn.dataset.reason; // 기존
+  const reason = btn.dataset.reason; // 필요 시 로깅/전송
   const cat = pendingCategory;
 
-  // (추가) 현재 활성 카드 메타 → 로그에 저장
-  const activeVideo = getActiveVideo();
-  const card = activeVideo ? activeVideo.closest('.video') : null;
-  const row = card ? {
-    TITLE   : card.querySelector('.title-text')?.textContent?.trim() || '',
-    ID      : card.querySelector('.id-text')?.textContent?.trim() || '',
-    MUSIC   : card.querySelector('.music-text')?.textContent?.trim() || '',
-    'MP4 URL': activeVideo?.currentSrc || activeVideo?.src || ''
-  } : null;
-  try { logNotInterested({ reason, category: cat, row }); } catch(e){ console.warn('NI 로그 실패', e); }
-
-  // 원래 흐름 유지
+  // ... (원래 행동) 바텀시트 닫기/숨김/토스트
   closeBottomSheet();
   if(cat){
     hideCategory(cat); // 기존 2분 숨김 로직 실행
@@ -528,6 +460,98 @@ if(sheetList) sheetList.addEventListener('click', (e)=>{
 /* ----------------- 시작 ----------------- */
 loadAll();
 </script>
+
+<!-- CSV 내보내기 버튼 (고정 오버레이; 기존 UI에 영향 없음) -->
+<button id="btn-export" type="button"
+  aria-label="CSV 내보내기"
+  style="position:fixed;right:16px;bottom:16px;z-index:999999;background:rgba(17,17,17,.95);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:12px;padding:10px 12px;font-size:13px;line-height:1;cursor:pointer;user-select:none;-webkit-tap-highlight-color: transparent;">
+  CSV
+</button>
+
+<script>
+// ===== 관심없음 로깅 + CSV (원본 구조 변경 없이 추가) =====
+(function(){
+  const LOG_STORAGE_KEY = 'not_interested_logs_v1';
+  function getNILogs(){ try { return JSON.parse(localStorage.getItem(LOG_STORAGE_KEY) || '[]'); } catch { return []; } }
+  function saveNILogs(logs){ localStorage.setItem(LOG_STORAGE_KEY, JSON.stringify(logs)); }
+  function logNotInterested(entry){
+    const logs = getNILogs(); logs.push(entry); saveNILogs(logs);
+    try { console.debug('[NI LOG]', entry); } catch(e){}
+  }
+  function exportNILogsToCSV(){
+    const logs = getNILogs();
+    if(!logs.length){ alert('저장된 로그가 없습니다.'); return; }
+    const headers = ['ts_iso','ts_local','reason','category','title','id','music','video_url'];
+    const rows = logs.map(o => headers.map(h => (String(o[h] ?? '')).replaceAll('\"','\"\"')));
+    const csv = [headers.join(','), ...rows.map(r => '\"'+r.join('\",\"')+'\"')].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const d = new Date();
+    a.href = url; a.download = `not_interested_logs_${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+  }
+  // CSV 버튼 연결
+  document.getElementById('btn-export')?.addEventListener('click', exportNILogsToCSV);
+
+  // 바텀시트 사유 클릭 로깅 (원본 핸들러와 별도로, 캡처 단계에서 가볍게 후킹)
+  function getActiveCard(){
+    let el = document.querySelector('.video[data-active="true"]');
+    if (el) return el;
+    const cards = Array.from(document.querySelectorAll('.video'));
+    if(!cards.length) return null;
+    const center = window.innerHeight/2;
+    let best=null,bestDist=1e9;
+    cards.forEach(card=>{
+      const r = card.getBoundingClientRect();
+      const mid = r.top + r.height/2;
+      const d = Math.abs(mid - center);
+      if (d < bestDist) { bestDist=d; best=card; }
+    });
+    return best;
+  }
+  function extractRow(card){
+    if(!card) return null;
+    const get = sel => card.querySelector(sel)?.textContent?.trim() || '';
+    const v = card.querySelector('video.video-bg, video');
+    return {
+      TITLE: get('.title-text'),
+      ID: get('.id-text'),
+      MUSIC: get('.music-text'),
+      'MP4 URL': (v?.currentSrc || v?.src || '')
+    };
+  }
+  const list = document.getElementById('sheet-list');
+  if (list && !list.__ni_wired){
+    list.__ni_wired = true;
+    list.addEventListener('click', function(e){
+      const btn = e.target.closest('.sheet-item, [data-reason], button');
+      if(!btn) return;
+      const reason = btn.getAttribute('data-reason') || btn.textContent.trim() || '';
+      let category = '';
+      try { if (typeof pendingCategory !== 'undefined' && pendingCategory) category = pendingCategory; } catch(e){}
+      if (!category) category = btn.getAttribute('data-category') || '';
+      const card = getActiveCard();
+      if (!category && card) category = card.getAttribute('data-category') || '';
+      const row = extractRow(card);
+      const now = new Date();
+      logNotInterested({
+        ts_iso: now.toISOString(),
+        ts_local: now.toLocaleString(),
+        reason: reason,
+        category: category,
+        title: row?.TITLE ?? '',
+        id: row?.ID ?? '',
+        music: row?.MUSIC ?? '',
+        video_url: row?.['MP4 URL'] ?? ''
+      });
+    }, true);
+  }
+
+  // 콘솔에서도 사용 가능
+  window.exportNI = { get: getNILogs, exportCSV: exportNILogsToCSV };
+})();
+</script>
+
 </body>
 </html>
-
